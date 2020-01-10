@@ -1,0 +1,467 @@
+diff --git a/drivers/mmc/card/block.c b/drivers/mmc/card/block.c
+index 5615514..e3872aa 100644
+--- a/drivers/mmc/card/block.c
++++ b/drivers/mmc/card/block.c
+@@ -42,6 +42,8 @@
+ #include "queue.h"
+ 
+ MODULE_ALIAS("mmc:block");
++#define DRIVER_VERSION "0.1-rh1"
++MODULE_VERSION(DRIVER_VERSION);
+ 
+ /*
+  * max 8 partitions per card
+@@ -170,7 +172,7 @@ static u32 mmc_sd_num_wr_blocks(struct mmc_card *card)
+ 	cmd.arg = card->rca << 16;
+ 	cmd.flags = MMC_RSP_SPI_R1 | MMC_RSP_R1 | MMC_CMD_AC;
+ 
+-	err = mmc_wait_for_cmd(card->host, &cmd, 0);
++	err = mmc_wait_for_cmd_dup(card->host, &cmd, 0);
+ 	if (err)
+ 		return (u32)-1;
+ 	if (!mmc_host_is_spi(card->host) && !(cmd.resp[0] & R1_APP_CMD))
+@@ -213,7 +215,7 @@ static u32 mmc_sd_num_wr_blocks(struct mmc_card *card)
+ 
+ 	sg_init_one(&sg, blocks, 4);
+ 
+-	mmc_wait_for_req(card->host, &mrq);
++	mmc_wait_for_req_dup(card->host, &mrq);
+ 
+ 	result = ntohl(*blocks);
+ 	kfree(blocks);
+@@ -234,7 +236,7 @@ static u32 get_card_status(struct mmc_card *card, struct request *req)
+ 	if (!mmc_host_is_spi(card->host))
+ 		cmd.arg = card->rca << 16;
+ 	cmd.flags = MMC_RSP_SPI_R2 | MMC_RSP_R1 | MMC_CMD_AC;
+-	err = mmc_wait_for_cmd(card->host, &cmd, 0);
++	err = mmc_wait_for_cmd_dup(card->host, &cmd, 0);
+ 	if (err)
+ 		printk(KERN_ERR "%s: error %d sending status comand",
+ 		       req->rq_disk->disk_name, err);
+@@ -306,10 +308,10 @@ static int mmc_blk_issue_rq(struct mmc_queue *mq, struct request *req)
+ 			brq.data.flags |= MMC_DATA_WRITE;
+ 		}
+ 
+-		mmc_set_data_timeout(&brq.data, card);
++		mmc_set_data_timeout_dup(&brq.data, card);
+ 
+ 		brq.data.sg = mq->sg;
+-		brq.data.sg_len = mmc_queue_map_sg(mq);
++		brq.data.sg_len = mmc_queue_map_sg_dup(mq);
+ 
+ 		/*
+ 		 * Adjust the sg list so it is the same size as the
+@@ -330,11 +332,11 @@ static int mmc_blk_issue_rq(struct mmc_queue *mq, struct request *req)
+ 			brq.data.sg_len = i;
+ 		}
+ 
+-		mmc_queue_bounce_pre(mq);
++		mmc_queue_bounce_pre_dup(mq);
+ 
+-		mmc_wait_for_req(card->host, &brq.mrq);
++		mmc_wait_for_req_dup(card->host, &brq.mrq);
+ 
+-		mmc_queue_bounce_post(mq);
++		mmc_queue_bounce_post_dup(mq);
+ 
+ 		/*
+ 		 * Check for errors here, but don't jump to cmd_err
+@@ -384,7 +386,7 @@ static int mmc_blk_issue_rq(struct mmc_queue *mq, struct request *req)
+ 				cmd.opcode = MMC_SEND_STATUS;
+ 				cmd.arg = card->rca << 16;
+ 				cmd.flags = MMC_RSP_R1 | MMC_CMD_AC;
+-				err = mmc_wait_for_cmd(card->host, &cmd, 5);
++				err = mmc_wait_for_cmd_dup(card->host, &cmd, 5);
+ 				if (err) {
+ 					printk(KERN_ERR "%s: error %d requesting status\n",
+ 					       req->rq_disk->disk_name, err);
+@@ -430,7 +432,7 @@ static int mmc_blk_issue_rq(struct mmc_queue *mq, struct request *req)
+ 		spin_unlock_irq(&md->lock);
+ 	} while (ret);
+ 
+-	mmc_release_host(card->host);
++	mmc_release_host_dup(card->host);
+ 
+ 	return 1;
+ 
+@@ -458,7 +460,7 @@ static int mmc_blk_issue_rq(struct mmc_queue *mq, struct request *req)
+ 		spin_unlock_irq(&md->lock);
+ 	}
+ 
+-	mmc_release_host(card->host);
++	mmc_release_host_dup(card->host);
+ 
+ 	spin_lock_irq(&md->lock);
+ 	while (ret)
+@@ -507,7 +509,7 @@ static struct mmc_blk_data *mmc_blk_alloc(struct mmc_card *card)
+ 	spin_lock_init(&md->lock);
+ 	md->usage = 1;
+ 
+-	ret = mmc_init_queue(&md->queue, card, &md->lock);
++	ret = mmc_init_queue_dup(&md->queue, card, &md->lock);
+ 	if (ret)
+ 		goto err_putdisk;
+ 
+@@ -567,8 +569,8 @@ mmc_blk_set_blksize(struct mmc_blk_data *md, struct mmc_card *card)
+ 	int err;
+ 
+ 	mmc_claim_host(card->host);
+-	err = mmc_set_blocklen(card, 512);
+-	mmc_release_host(card->host);
++	err = mmc_set_blocklen_dup(card, 512);
++	mmc_release_host_dup(card->host);
+ 
+ 	if (err) {
+ 		printk(KERN_ERR "%s: unable to set block size to 512: %d\n",
+@@ -611,7 +613,7 @@ static int mmc_blk_probe(struct mmc_card *card)
+ 	return 0;
+ 
+  out:
+-	mmc_cleanup_queue(&md->queue);
++	mmc_cleanup_queue_dup(&md->queue);
+ 	mmc_blk_put(md);
+ 
+ 	return err;
+@@ -626,7 +628,7 @@ static void mmc_blk_remove(struct mmc_card *card)
+ 		del_gendisk(md->disk);
+ 
+ 		/* Then flush out any already in there */
+-		mmc_cleanup_queue(&md->queue);
++		mmc_cleanup_queue_dup(&md->queue);
+ 
+ 		mmc_blk_put(md);
+ 	}
+@@ -639,7 +641,7 @@ static int mmc_blk_suspend(struct mmc_card *card, pm_message_t state)
+ 	struct mmc_blk_data *md = mmc_get_drvdata(card);
+ 
+ 	if (md) {
+-		mmc_queue_suspend(&md->queue);
++		mmc_queue_suspend_dup(&md->queue);
+ 	}
+ 	return 0;
+ }
+@@ -650,7 +652,7 @@ static int mmc_blk_resume(struct mmc_card *card)
+ 
+ 	if (md) {
+ 		mmc_blk_set_blksize(md, card);
+-		mmc_queue_resume(&md->queue);
++		mmc_queue_resume_dup(&md->queue);
+ 	}
+ 	return 0;
+ }
+@@ -677,7 +679,7 @@ static int __init mmc_blk_init(void)
+ 	if (res)
+ 		goto out;
+ 
+-	res = mmc_register_driver(&mmc_driver);
++	res = mmc_register_driver_dup(&mmc_driver);
+ 	if (res)
+ 		goto out2;
+ 
+@@ -690,7 +692,7 @@ static int __init mmc_blk_init(void)
+ 
+ static void __exit mmc_blk_exit(void)
+ {
+-	mmc_unregister_driver(&mmc_driver);
++	mmc_unregister_driver_dup(&mmc_driver);
+ 	unregister_blkdev(MMC_BLOCK_MAJOR, "mmc");
+ }
+ 
+diff --git a/drivers/mmc/card/queue.c b/drivers/mmc/card/queue.c
+index bae13d5..b60d2d5 100644
+--- a/drivers/mmc/card/queue.c
++++ b/drivers/mmc/card/queue.c
+@@ -102,14 +102,14 @@ static void mmc_request(struct request_queue *q)
+ }
+ 
+ /**
+- * mmc_init_queue - initialise a queue structure.
++ * mmc_init_queue_dup - initialise a queue structure.
+  * @mq: mmc queue
+  * @card: mmc card to attach this queue
+  * @lock: queue lock
+  *
+  * Initialise a MMC card request queue.
+  */
+-int mmc_init_queue(struct mmc_queue *mq, struct mmc_card *card, spinlock_t *lock)
++int mmc_init_queue_dup(struct mmc_queue *mq, struct mmc_card *card, spinlock_t *lock)
+ {
+ 	struct mmc_host *host = card->host;
+ 	u64 limit = BLK_BOUNCE_HIGH;
+@@ -216,13 +216,13 @@ int mmc_init_queue(struct mmc_queue *mq, struct mmc_card *card, spinlock_t *lock
+ 	return ret;
+ }
+ 
+-void mmc_cleanup_queue(struct mmc_queue *mq)
++void mmc_cleanup_queue_dup(struct mmc_queue *mq)
+ {
+ 	struct request_queue *q = mq->queue;
+ 	unsigned long flags;
+ 
+ 	/* Make sure the queue isn't suspended, as that will deadlock */
+-	mmc_queue_resume(mq);
++	mmc_queue_resume_dup(mq);
+ 
+ 	/* Then terminate our worker thread */
+ 	kthread_stop(mq->thread);
+@@ -246,17 +246,17 @@ void mmc_cleanup_queue(struct mmc_queue *mq)
+ 
+ 	mq->card = NULL;
+ }
+-EXPORT_SYMBOL(mmc_cleanup_queue);
++EXPORT_SYMBOL(mmc_cleanup_queue_dup);
+ 
+ /**
+- * mmc_queue_suspend - suspend a MMC request queue
++ * mmc_queue_suspend_dup - suspend a MMC request queue
+  * @mq: MMC queue to suspend
+  *
+  * Stop the block request queue, and wait for our thread to
+  * complete any outstanding requests.  This ensures that we
+  * won't suspend while a request is being processed.
+  */
+-void mmc_queue_suspend(struct mmc_queue *mq)
++void mmc_queue_suspend_dup(struct mmc_queue *mq)
+ {
+ 	struct request_queue *q = mq->queue;
+ 	unsigned long flags;
+@@ -273,10 +273,10 @@ void mmc_queue_suspend(struct mmc_queue *mq)
+ }
+ 
+ /**
+- * mmc_queue_resume - resume a previously suspended MMC request queue
++ * mmc_queue_resume_dup - resume a previously suspended MMC request queue
+  * @mq: MMC queue to resume
+  */
+-void mmc_queue_resume(struct mmc_queue *mq)
++void mmc_queue_resume_dup(struct mmc_queue *mq)
+ {
+ 	struct request_queue *q = mq->queue;
+ 	unsigned long flags;
+@@ -295,7 +295,7 @@ void mmc_queue_resume(struct mmc_queue *mq)
+ /*
+  * Prepare the sg list(s) to be handed of to the host driver
+  */
+-unsigned int mmc_queue_map_sg(struct mmc_queue *mq)
++unsigned int mmc_queue_map_sg_dup(struct mmc_queue *mq)
+ {
+ 	unsigned int sg_len;
+ 	size_t buflen;
+@@ -324,7 +324,7 @@ unsigned int mmc_queue_map_sg(struct mmc_queue *mq)
+  * If writing, bounce the data to the buffer before the request
+  * is sent to the host driver
+  */
+-void mmc_queue_bounce_pre(struct mmc_queue *mq)
++void mmc_queue_bounce_pre_dup(struct mmc_queue *mq)
+ {
+ 	unsigned long flags;
+ 
+@@ -344,7 +344,7 @@ void mmc_queue_bounce_pre(struct mmc_queue *mq)
+  * If reading, bounce the data from the buffer after the request
+  * has been handled by the host driver
+  */
+-void mmc_queue_bounce_post(struct mmc_queue *mq)
++void mmc_queue_bounce_post_dup(struct mmc_queue *mq)
+ {
+ 	unsigned long flags;
+ 
+diff --git a/drivers/mmc/card/queue.h b/drivers/mmc/card/queue.h
+index 64e66e0..905c80f 100644
+--- a/drivers/mmc/card/queue.h
++++ b/drivers/mmc/card/queue.h
+@@ -19,13 +19,13 @@ struct mmc_queue {
+ 	unsigned int		bounce_sg_len;
+ };
+ 
+-extern int mmc_init_queue(struct mmc_queue *, struct mmc_card *, spinlock_t *);
+-extern void mmc_cleanup_queue(struct mmc_queue *);
+-extern void mmc_queue_suspend(struct mmc_queue *);
+-extern void mmc_queue_resume(struct mmc_queue *);
++extern int mmc_init_queue_dup(struct mmc_queue *, struct mmc_card *, spinlock_t *);
++extern void mmc_cleanup_queue_dup(struct mmc_queue *);
++extern void mmc_queue_suspend_dup(struct mmc_queue *);
++extern void mmc_queue_resume_dup(struct mmc_queue *);
+ 
+-extern unsigned int mmc_queue_map_sg(struct mmc_queue *);
+-extern void mmc_queue_bounce_pre(struct mmc_queue *);
+-extern void mmc_queue_bounce_post(struct mmc_queue *);
++extern unsigned int mmc_queue_map_sg_dup(struct mmc_queue *);
++extern void mmc_queue_bounce_pre_dup(struct mmc_queue *);
++extern void mmc_queue_bounce_post_dup(struct mmc_queue *);
+ 
+ #endif
+diff --git a/include/linux/mmc/card.h b/include/linux/mmc/card.h
+index daadbd6..eb84a78 100644
+--- a/include/linux/mmc/card.h
++++ b/include/linux/mmc/card.h
+@@ -236,7 +236,7 @@ struct mmc_driver {
+ 	int (*resume)(struct mmc_card *);
+ };
+ 
+-extern int mmc_register_driver(struct mmc_driver *);
+-extern void mmc_unregister_driver(struct mmc_driver *);
++extern int mmc_register_driver_dup(struct mmc_driver *);
++extern void mmc_unregister_driver_dup(struct mmc_driver *);
+ 
+ #endif
+diff --git a/include/linux/mmc/core.h b/include/linux/mmc/core.h
+index 64e013f..01a43ec 100644
+--- a/include/linux/mmc/core.h
++++ b/include/linux/mmc/core.h
+@@ -131,9 +131,9 @@ struct mmc_request {
+ struct mmc_host;
+ struct mmc_card;
+ 
+-extern void mmc_wait_for_req(struct mmc_host *, struct mmc_request *);
+-extern int mmc_wait_for_cmd(struct mmc_host *, struct mmc_command *, int);
+-extern int mmc_wait_for_app_cmd(struct mmc_host *, struct mmc_card *,
++extern void mmc_wait_for_req_dup(struct mmc_host *, struct mmc_request *);
++extern int mmc_wait_for_cmd_dup(struct mmc_host *, struct mmc_command *, int);
++extern int mmc_wait_for_app_cmd_dup(struct mmc_host *, struct mmc_card *,
+ 	struct mmc_command *, int);
+ 
+ #define MMC_ERASE_ARG		0x00000000
+@@ -145,22 +145,22 @@ extern int mmc_wait_for_app_cmd(struct mmc_host *, struct mmc_card *,
+ #define MMC_SECURE_ARGS		0x80000000
+ #define MMC_TRIM_ARGS		0x00008001
+ 
+-extern int mmc_erase(struct mmc_card *card, unsigned int from, unsigned int nr,
++extern int mmc_erase_dup(struct mmc_card *card, unsigned int from, unsigned int nr,
+ 		     unsigned int arg);
+-extern int mmc_can_erase(struct mmc_card *card);
+-extern int mmc_can_trim(struct mmc_card *card);
+-extern int mmc_can_secure_erase_trim(struct mmc_card *card);
+-extern int mmc_erase_group_aligned(struct mmc_card *card, unsigned int from,
++extern int mmc_can_erase_dup(struct mmc_card *card);
++extern int mmc_can_trim_dup(struct mmc_card *card);
++extern int mmc_can_secure_erase_trim_dup(struct mmc_card *card);
++extern int mmc_erase_dup_group_aligned(struct mmc_card *card, unsigned int from,
+ 				   unsigned int nr);
+ 
+-extern int mmc_set_blocklen(struct mmc_card *card, unsigned int blocklen);
++extern int mmc_set_blocklen_dup(struct mmc_card *card, unsigned int blocklen);
+ 
+-extern void mmc_set_data_timeout(struct mmc_data *, const struct mmc_card *);
+-extern unsigned int mmc_align_data_size(struct mmc_card *, unsigned int);
++extern void mmc_set_data_timeout_dup(struct mmc_data *, const struct mmc_card *);
++extern unsigned int mmc_align_data_size_dup(struct mmc_card *, unsigned int);
+ 
+-extern int __mmc_claim_host(struct mmc_host *host, atomic_t *abort);
+-extern void mmc_release_host(struct mmc_host *host);
+-extern int mmc_try_claim_host(struct mmc_host *host);
++extern int __mmc_claim_host_dup(struct mmc_host *host, atomic_t *abort);
++extern void mmc_release_host_dup(struct mmc_host *host);
++extern int mmc_try_claim_host_dup(struct mmc_host *host);
+ 
+ /**
+  *	mmc_claim_host - exclusively claim a host
+@@ -170,9 +170,9 @@ extern int mmc_try_claim_host(struct mmc_host *host);
+  */
+ static inline void mmc_claim_host(struct mmc_host *host)
+ {
+-	__mmc_claim_host(host, NULL);
++	__mmc_claim_host_dup(host, NULL);
+ }
+ 
+-extern u32 mmc_vddrange_to_ocrmask(int vdd_min, int vdd_max);
++extern u32 mmc_vddrange_to_ocrmask_dup(int vdd_min, int vdd_max);
+ 
+ #endif
+diff --git a/include/linux/mmc/host.h b/include/linux/mmc/host.h
+index 0cd9ee7..467954d 100644
+--- a/include/linux/mmc/host.h
++++ b/include/linux/mmc/host.h
+@@ -92,12 +92,12 @@ struct mmc_host_ops {
+ 	 *
+ 	 * In the case where a host function (like set_ios) may be called
+ 	 * with or without the host claimed, enabling and disabling can be
+-	 * done directly and will nest correctly. Call 'mmc_host_enable()' and
+-	 * 'mmc_host_lazy_disable()' for this purpose, but note that these
++	 * done directly and will nest correctly. Call 'mmc_host_enable_dup()' and
++	 * 'mmc_host_lazy_disable_dup()' for this purpose, but note that these
+ 	 * functions must be paired.
+ 	 *
+-	 * Alternatively, 'mmc_host_enable()' may be paired with
+-	 * 'mmc_host_disable()' which calls 'disable' immediately.  In this
++	 * Alternatively, 'mmc_host_enable_dup()' may be paired with
++	 * 'mmc_host_disable_dup()' which calls 'disable' immediately.  In this
+ 	 * case the 'disable' method will be called with 'lazy' set to 0.
+ 	 * This is mainly useful for error paths.
+ 	 *
+@@ -264,10 +264,10 @@ struct mmc_host {
+ 	unsigned long		private[0] ____cacheline_aligned;
+ };
+ 
+-extern struct mmc_host *mmc_alloc_host(int extra, struct device *);
+-extern int mmc_add_host(struct mmc_host *);
+-extern void mmc_remove_host(struct mmc_host *);
+-extern void mmc_free_host(struct mmc_host *);
++extern struct mmc_host *mmc_alloc_host_dup(int extra, struct device *);
++extern int mmc_add_host_dup(struct mmc_host *);
++extern void mmc_remove_host_dup(struct mmc_host *);
++extern void mmc_free_host_dup(struct mmc_host *);
+ 
+ static inline void *mmc_priv(struct mmc_host *host)
+ {
+@@ -280,14 +280,14 @@ static inline void *mmc_priv(struct mmc_host *host)
+ #define mmc_classdev(x)	(&(x)->class_dev)
+ #define mmc_hostname(x)	(dev_name(&(x)->class_dev))
+ 
+-extern int mmc_suspend_host(struct mmc_host *, pm_message_t);
+-extern int mmc_resume_host(struct mmc_host *);
++extern int mmc_suspend_host_dup(struct mmc_host *, pm_message_t);
++extern int mmc_resume_host_dup(struct mmc_host *);
+ 
+-extern int mmc_power_save_host(struct mmc_host *host);
+-extern int mmc_power_restore_host(struct mmc_host *host);
++extern int mmc_power_save_host_dup(struct mmc_host *host);
++extern int mmc_power_restore_host_dup(struct mmc_host *host);
+ 
+-extern void mmc_detect_change(struct mmc_host *, unsigned long delay);
+-extern void mmc_request_done(struct mmc_host *, struct mmc_request *);
++extern void mmc_detect_change_dup(struct mmc_host *, unsigned long delay);
++extern void mmc_request_done_dup(struct mmc_host *, struct mmc_request *);
+ 
+ static inline void mmc_signal_sdio_irq(struct mmc_host *host)
+ {
+@@ -297,17 +297,17 @@ static inline void mmc_signal_sdio_irq(struct mmc_host *host)
+ 
+ struct regulator;
+ 
+-int mmc_regulator_get_ocrmask(struct regulator *supply);
+-int mmc_regulator_set_ocr(struct regulator *supply, unsigned short vdd_bit);
++int mmc_regulator_get_ocrmask_dup(struct regulator *supply);
++int mmc_regulator_set_ocr_dup(struct regulator *supply, unsigned short vdd_bit);
+ 
+-int mmc_card_awake(struct mmc_host *host);
+-int mmc_card_sleep(struct mmc_host *host);
+-int mmc_card_can_sleep(struct mmc_host *host);
++int mmc_card_awake_dup(struct mmc_host *host);
++int mmc_card_sleep_dup(struct mmc_host *host);
++int mmc_card_can_sleep_dup(struct mmc_host *host);
+ 
+-int mmc_host_enable(struct mmc_host *host);
+-int mmc_host_disable(struct mmc_host *host);
+-int mmc_host_lazy_disable(struct mmc_host *host);
+-int mmc_pm_notify(struct notifier_block *notify_block, unsigned long, void *);
++int mmc_host_enable_dup(struct mmc_host *host);
++int mmc_host_disable_dup(struct mmc_host *host);
++int mmc_host_lazy_disable_dup(struct mmc_host *host);
++int mmc_pm_notify_dup(struct notifier_block *notify_block, unsigned long, void *);
+ 
+ static inline void mmc_set_disable_delay(struct mmc_host *host,
+ 					 unsigned int disable_delay)
+@@ -316,11 +316,11 @@ static inline void mmc_set_disable_delay(struct mmc_host *host,
+ }
+ 
+ /* Module parameter */
+-extern int mmc_assume_removable;
++extern int mmc_assume_removable_dup;
+ 
+ static inline int mmc_card_is_removable(struct mmc_host *host)
+ {
+-	return !(host->caps & MMC_CAP_NONREMOVABLE) && mmc_assume_removable;
++	return !(host->caps & MMC_CAP_NONREMOVABLE) && mmc_assume_removable_dup;
+ }
+ 
+ #endif

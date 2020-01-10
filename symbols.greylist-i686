@@ -1,0 +1,9 @@
+blk_dump_rq_flags
+__mmc_claim_host_dup
+mmc_register_driver_dup
+mmc_release_host_dup
+mmc_set_blocklen_dup
+mmc_set_data_timeout_dup
+mmc_unregister_driver_dup
+mmc_wait_for_cmd_dup
+mmc_wait_for_req_dup
